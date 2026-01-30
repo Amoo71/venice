@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Access</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Password Gate Screen -->
+    <div id="passwordGate" class="gate-container">
+        <div class="liquid-bg"></div>
+        <div class="password-box glass">
+            <input 
+                type="password" 
+                id="passwordInput" 
+                class="password-input glass-input" 
+                placeholder=""
+                autocomplete="off"
+                maxlength="4"
+            >
+        </div>
+    </div>
+
+    <!-- Main Chat Interface (hidden initially) -->
+    <div id="mainInterface" class="main-container hidden">
+        <div class="liquid-bg"></div>
+        
+        <div class="chat-container glass">
+            <!-- Header -->
+            <div class="chat-header">
+                <pre class="ascii-logo">          ____   ____            .__                  _____  .___          
+  ______ \   \ /   /____   ____ |__| ____  ____     /  _  \ |   |  ______ 
+ /_____/  \   Y   // __ \ /    \|  |/ ___\/ __ \   /  /_\  \|   | /_____/ 
+ /_____/   \     /\  ___/|   |  \  \  \__\  ___/  /    |    \   | /_____/ 
+            \___/  \___  >___|  /__|\___  >___  > \____|__  /___|         
+                       \/     \/        \/    \/          \/              </pre>
+                <div class="header-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connected</span>
+                </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="messagesContainer" class="messages-container">
+                <div class="welcome-message">
+                    <div class="welcome-icon">🤖</div>
+                    <div class="welcome-text">Start a conversation with Venice AI</div>
+                </div>
+            </div>
+            
+            <!-- Live typing preview (outside messages container, positioned at bottom) -->
+            <div id="typingPreview" class="typing-preview hidden">
+                <div class="message user">
+                    <div class="message-avatar">👤</div>
+                    <div class="message-content">
+                        <span id="typingPreviewText"></span>
+                        <span class="typing-cursor">|</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <textarea 
+                    id="messageInput" 
+                    class="message-input glass-input" 
+                    placeholder="What's up?..."
+                    rows="1"
+                ></textarea>
+                <button id="sendButton" class="send-button glass-button">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
