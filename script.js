@@ -3,7 +3,7 @@ const CORRECT_PASSWORD = '1312';
 // Replace Venice AI with a free inference provider (e.g., Hugging Face Inference API).
 // You should set FREE_API_KEY to your provider's API key if required.
 // For Hugging Face, you can create a free API key at https://huggingface.co/settings/tokens
-const FREE_API_KEY = ''; // Provide your free API key here if needed
+const FREE_API_KEY = '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'; // Provide your free API key here if needed
 // This endpoint is OpenAI‑compatible and routed through Hugging Face's inference router.
 const FREE_API_URL = 'https://router.huggingface.co/v1/chat/completions';
 const PASSWORD_CHECK_DELAY = 2000; // 2 seconds
