@@ -346,7 +346,7 @@ async function sendToVeniceAI(message) {
             stream: false
         };
         
-        // Add Venice-specific parameters using extra_body
+        // Add Venice-specific parameters directly in body (for REST API)
         const veniceParams = {
             include_venice_system_prompt: aiSettings.includeVeniceSystemPrompt
         };
@@ -355,10 +355,8 @@ async function sendToVeniceAI(message) {
             veniceParams.enable_web_search = aiSettings.webSearch;
         }
         
-        // Venice uses extra_body for custom parameters
-        requestBody.extra_body = {
-            venice_parameters: veniceParams
-        };
+        // For direct REST API calls, venice_parameters goes in main body
+        requestBody.venice_parameters = veniceParams;
         
         const response = await fetch(VENICE_API_URL, {
             method: 'POST',
