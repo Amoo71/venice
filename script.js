@@ -212,7 +212,16 @@ async function handleSendMessage() {
     } catch (error) {
         console.error('Error:', error);
         removeLoadingMessage(loadingId);
-        await addMessageWithTypewriter('assistant', 'Sorry, I encountered an error. Please try again.');
+        
+        // Show actual error message instead of generic one
+        let errorMessage = 'Error: ';
+        if (error.message) {
+            errorMessage += error.message;
+        } else {
+            errorMessage += 'Unknown error occurred. Check console for details.';
+        }
+        
+        await addMessageWithTypewriter('assistant', errorMessage);
     } finally {
         isProcessing = false;
         sendButton.disabled = false;
