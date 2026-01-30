@@ -4,6 +4,19 @@ const VENICE_API_KEY = 'VENICE-ADMIN-KEY-FUtsSazB_UZc15v2gPH07kOb8UY7nzRzh2wlAy8
 const VENICE_API_URL = 'https://api.venice.ai/api/v1/chat/completions';
 const PASSWORD_CHECK_DELAY = 2000; // 2 seconds
 
+// AI Settings (defaults)
+let aiSettings = {
+    model: 'venice-uncensored',
+    systemPrompt: '',
+    temperature: 0.7,
+    maxTokens: 2000,
+    topP: 0.9,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    webSearch: 'off',
+    includeVeniceSystemPrompt: true
+};
+
 // State
 let passwordTimeout = null;
 let conversationHistory = [];
@@ -19,10 +32,19 @@ const messagesContainer = document.getElementById('messagesContainer');
 const typingPreview = document.getElementById('typingPreview');
 const typingPreviewText = document.getElementById('typingPreviewText');
 
+// Settings elements
+const settingsButton = document.getElementById('settingsButton');
+const settingsModal = document.getElementById('settingsModal');
+const closeSettings = document.getElementById('closeSettings');
+const saveSettings = document.getElementById('saveSettings');
+const clearChatButton = document.getElementById('clearChatButton');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     initializePasswordGate();
     initializeChatInterface();
+    initializeSettings();
+    loadSettings();
 });
 
 // Password Gate Logic
@@ -93,6 +115,23 @@ function initializeChatInterface() {
     sendButton.addEventListener('click', handleSendMessage);
     messageInput.addEventListener('keydown', handleMessageKeydown);
     messageInput.addEventListener('input', handleMessageInput);
+    clearChatButton.addEventListener('click', clearChat);
+}
+
+function clearChat() {
+    // Clear conversation history
+    conversationHistory = [];
+    
+    // Clear all messages
+    const messages = messagesContainer.querySelectorAll('.message');
+    messages.forEach(msg => msg.remove());
+    
+    // Show welcome message
+    const welcomeDiv = document.createElement('div');
+    welcomeDiv.className = 'welcome-message';
+    messagesContainer.innerHTML = '';
+    
+    console.log('Chat cleared - new session started');
 }
 
 function handleMessageInput() {
@@ -277,22 +316,162 @@ function scrollToBottom() {
 }
 
 async function sendToVeniceAI(message) {
-    const response = await fetch(VENICE_API_URL, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${VENICE_API_KEY}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: 'venice-uncensored',
-            messages: conversationHistory
-        })
+    try {
+        // Build messages array with system prompt if set
+        const messages = [];
+        if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
+            messages.push({
+                role: 'system',
+                content: aiSettings.systemPrompt
+            });
+        }
+        messages.push(...conversationHistory);
+        
+        console.log('Sending to Venice AI:', {
+            url: VENICE_API_URL,
+            model: aiSettings.model,
+            messages: messages
+        });
+        
+        // Build request body
+        const requestBody = {
+            model: aiSettings.model,
+            messages: messages,
+            temperature: aiSettings.temperature,
+            max_tokens: aiSettings.maxTokens,
+            top_p: aiSettings.topP,
+            frequency_penalty: aiSettings.frequencyPenalty,
+            presence_penalty: aiSettings.presencePenalty
+        };
+        
+        // Add Venice-specific parameters
+        const veniceParams = {
+            include_venice_system_prompt: aiSettings.includeVeniceSystemPrompt
+        };
+        
+        if (aiSettings.webSearch !== 'off') {
+            veniceParams.enable_web_search = aiSettings.webSearch;
+        }
+        
+        requestBody.venice_parameters = veniceParams;
+        
+        const response = await fetch(VENICE_API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${VENICE_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        console.log('Response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error Response:', errorText);
+            throw new Error(`API request failed: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        console.log('API Response:', data);
+        
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            throw new Error('Invalid API response format');
+        }
+        
+        return data.choices[0].message.content;
+    } catch (error) {
+        console.error('Venice AI Error Details:', error);
+        throw error;
+    }
+}
+
+// Settings Functions
+function initializeSettings() {
+    settingsButton.addEventListener('click', () => {
+        settingsModal.classList.remove('hidden');
+        updateSettingsUI();
     });
     
-    if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-    }
+    closeSettings.addEventListener('click', () => {
+        settingsModal.classList.add('hidden');
+    });
     
-    const data = await response.json();
-    return data.choices[0].message.content;
+    saveSettings.addEventListener('click', () => {
+        saveSettingsFromUI();
+        settingsModal.classList.add('hidden');
+    });
+    
+    // Close modal on backdrop click
+    settingsModal.addEventListener('click', (e) => {
+        if (e.target === settingsModal) {
+            settingsModal.classList.add('hidden');
+        }
+    });
+    
+    // Update slider values in real-time
+    document.getElementById('temperature').addEventListener('input', (e) => {
+        document.getElementById('tempValue').textContent = e.target.value;
+    });
+    
+    document.getElementById('maxTokens').addEventListener('input', (e) => {
+        document.getElementById('tokensValue').textContent = e.target.value;
+    });
+    
+    document.getElementById('topP').addEventListener('input', (e) => {
+        document.getElementById('topPValue').textContent = e.target.value;
+    });
+    
+    document.getElementById('frequencyPenalty').addEventListener('input', (e) => {
+        document.getElementById('freqValue').textContent = e.target.value;
+    });
+    
+    document.getElementById('presencePenalty').addEventListener('input', (e) => {
+        document.getElementById('presValue').textContent = e.target.value;
+    });
+}
+
+function updateSettingsUI() {
+    document.getElementById('modelSelect').value = aiSettings.model;
+    document.getElementById('systemPrompt').value = aiSettings.systemPrompt;
+    document.getElementById('temperature').value = aiSettings.temperature;
+    document.getElementById('tempValue').textContent = aiSettings.temperature;
+    document.getElementById('maxTokens').value = aiSettings.maxTokens;
+    document.getElementById('tokensValue').textContent = aiSettings.maxTokens;
+    document.getElementById('topP').value = aiSettings.topP;
+    document.getElementById('topPValue').textContent = aiSettings.topP;
+    document.getElementById('frequencyPenalty').value = aiSettings.frequencyPenalty;
+    document.getElementById('freqValue').textContent = aiSettings.frequencyPenalty;
+    document.getElementById('presencePenalty').value = aiSettings.presencePenalty;
+    document.getElementById('presValue').textContent = aiSettings.presencePenalty;
+    document.getElementById('webSearch').value = aiSettings.webSearch;
+    document.getElementById('veniceSystemPrompt').checked = aiSettings.includeVeniceSystemPrompt;
+}
+
+function saveSettingsFromUI() {
+    aiSettings.model = document.getElementById('modelSelect').value;
+    aiSettings.systemPrompt = document.getElementById('systemPrompt').value;
+    aiSettings.temperature = parseFloat(document.getElementById('temperature').value);
+    aiSettings.maxTokens = parseInt(document.getElementById('maxTokens').value);
+    aiSettings.topP = parseFloat(document.getElementById('topP').value);
+    aiSettings.frequencyPenalty = parseFloat(document.getElementById('frequencyPenalty').value);
+    aiSettings.presencePenalty = parseFloat(document.getElementById('presencePenalty').value);
+    aiSettings.webSearch = document.getElementById('webSearch').value;
+    aiSettings.includeVeniceSystemPrompt = document.getElementById('veniceSystemPrompt').checked;
+    
+    // Save to localStorage
+    localStorage.setItem('veniceAISettings', JSON.stringify(aiSettings));
+    console.log('Settings saved:', aiSettings);
+}
+
+function loadSettings() {
+    const saved = localStorage.getItem('veniceAISettings');
+    if (saved) {
+        try {
+            aiSettings = JSON.parse(saved);
+            console.log('Settings loaded:', aiSettings);
+        } catch (e) {
+            console.error('Failed to load settings:', e);
+        }
+    }
 }
