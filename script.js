@@ -1,7 +1,11 @@
 // Configuration
 const CORRECT_PASSWORD = '1312';
-const VENICE_API_KEY = 'VENICE-ADMIN-KEY-FUtsSazB_UZc15v2gPH07kOb8UY7nzRzh2wlAy8trF'; // Replace with actual API key
-const VENICE_API_URL = 'https://api.venice.ai/api/v1/chat/completions';
+// Replace Venice AI with a free inference provider (e.g., Hugging Face Inference API).
+// You should set FREE_API_KEY to your provider's API key if required.
+// For Hugging Face, you can create a free API key at https://huggingface.co/settings/tokens
+const FREE_API_KEY = ''; // Provide your free API key here if needed
+// This endpoint is OpenAI‑compatible and routed through Hugging Face's inference router.
+const FREE_API_URL = 'https://router.huggingface.co/v1/chat/completions';
 const PASSWORD_CHECK_DELAY = 2000; // 2 seconds
 
 // AI Settings (defaults)
@@ -190,12 +194,13 @@ async function handleSendMessage() {
     // Show loading indicator
     const loadingId = addLoadingMessage();
     
-    // Send to Venice AI
+    // Send to the free AI backend
     try {
         isProcessing = true;
         sendButton.disabled = true;
         
-        const response = await sendToVeniceAI(message);
+            // Send the message to our free AI backend instead of Venice AI
+            const response = await sendToFreeAI(message);
         
         // Remove loading indicator
         removeLoadingMessage(loadingId);
@@ -324,7 +329,10 @@ function scrollToBottom() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-async function sendToVeniceAI(message) {
+// Sends the user's message to the free inference API.  This function was
+// previously tied to Venice AI; it now uses a generic OpenAI‑compatible
+// endpoint (e.g., Hugging Face Inference API).
+async function sendToFreeAI(message) {
     try {
         // Build messages array with system prompt if set
         const messages = [];
@@ -336,16 +344,27 @@ async function sendToVeniceAI(message) {
         }
         messages.push(...conversationHistory);
         
-        console.log('Sending to Venice AI:', {
-            url: VENICE_API_URL,
-            model: aiSettings.model,
+        // Map our internal model names to identifiers understood by the free API.
+        // These values correspond to model IDs hosted on the provider (e.g. Hugging Face).
+        const modelMap = {
+            'venice-uncensored': 'openai/gpt-oss-120b',
+            'llama-3.3-70b': 'meta-llama/Meta-Llama-3-70B-Instruct',
+            'zai-org-glm-4.7': 'zai-org/GLM-4.7',
+            'mistral-31-24b': 'mistralai/Mixtral-8x22B-Instruct-v0.1'
+        };
+
+        const modelId = modelMap[aiSettings.model] || aiSettings.model;
+
+        console.log('Sending to free AI:', {
+            url: FREE_API_URL,
+            model: modelId,
             messages: messages,
             settings: aiSettings
         });
-        
-        // Build request body - OpenAI compatible format
+
+        // Build request body following the OpenAI chat completions format.
         const requestBody = {
-            model: aiSettings.model,
+            model: modelId,
             messages: messages,
             temperature: aiSettings.temperature,
             max_tokens: aiSettings.maxTokens,
@@ -354,25 +373,21 @@ async function sendToVeniceAI(message) {
             presence_penalty: aiSettings.presencePenalty,
             stream: false
         };
-        
-        // Add Venice-specific parameters directly in body (for REST API)
-        const veniceParams = {
-            include_venice_system_prompt: aiSettings.includeVeniceSystemPrompt
+
+        // Note: Additional provider‑specific parameters (such as web search or
+        // system prompts injected by Venice) are intentionally omitted here.
+
+        const headers = {
+            'Content-Type': 'application/json'
         };
-        
-        if (aiSettings.webSearch !== 'off') {
-            veniceParams.enable_web_search = aiSettings.webSearch;
+        // Only include the Authorization header if a key has been provided.
+        if (FREE_API_KEY && FREE_API_KEY.trim()) {
+            headers['Authorization'] = `Bearer ${FREE_API_KEY}`;
         }
-        
-        // For direct REST API calls, venice_parameters goes in main body
-        requestBody.venice_parameters = veniceParams;
-        
-        const response = await fetch(VENICE_API_URL, {
+
+        const response = await fetch(FREE_API_URL, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${VENICE_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
+            headers: headers,
             body: JSON.stringify(requestBody)
         });
         
@@ -393,7 +408,7 @@ async function sendToVeniceAI(message) {
         
         return data.choices[0].message.content;
     } catch (error) {
-        console.error('Venice AI Error Details:', error);
+        console.error('AI Error Details:', error);
         throw error;
     }
 }
