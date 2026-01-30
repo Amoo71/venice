@@ -330,10 +330,11 @@ async function sendToVeniceAI(message) {
         console.log('Sending to Venice AI:', {
             url: VENICE_API_URL,
             model: aiSettings.model,
-            messages: messages
+            messages: messages,
+            settings: aiSettings
         });
         
-        // Build request body
+        // Build request body - OpenAI compatible format
         const requestBody = {
             model: aiSettings.model,
             messages: messages,
@@ -341,10 +342,11 @@ async function sendToVeniceAI(message) {
             max_tokens: aiSettings.maxTokens,
             top_p: aiSettings.topP,
             frequency_penalty: aiSettings.frequencyPenalty,
-            presence_penalty: aiSettings.presencePenalty
+            presence_penalty: aiSettings.presencePenalty,
+            stream: false
         };
         
-        // Add Venice-specific parameters
+        // Add Venice-specific parameters using extra_body
         const veniceParams = {
             include_venice_system_prompt: aiSettings.includeVeniceSystemPrompt
         };
@@ -353,7 +355,10 @@ async function sendToVeniceAI(message) {
             veniceParams.enable_web_search = aiSettings.webSearch;
         }
         
-        requestBody.venice_parameters = veniceParams;
+        // Venice uses extra_body for custom parameters
+        requestBody.extra_body = {
+            venice_parameters: veniceParams
+        };
         
         const response = await fetch(VENICE_API_URL, {
             method: 'POST',
