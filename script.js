@@ -23,7 +23,8 @@ let aiSettings = {
     systemPrompt: 'You are a helpful AI assistant.',
     temperature: 0.7,
     maxTokens: 2000,
-    topP: 0.9
+    topP: 0.9,
+    thinkingLevel: 'low' // Gemini thinking level: minimal, low, medium, high
 };
 
 // State
@@ -353,41 +354,41 @@ async function sendToAI(message) {
 
 async function sendToGemini(message) {
     try {
-        // Build messages with system prompt
-        const contents = [];
+        // Build conversation history in new Interactions API format
+        const input = [];
         
-        // Add system prompt as first user message if present
-        if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
-            contents.push({
-                role: 'user',
-                parts: [{ text: aiSettings.systemPrompt }]
-            });
-            contents.push({
-                role: 'model',
-                parts: [{ text: 'Understood. I will follow these instructions.' }]
-            });
-        }
-        
-        // Convert conversation history to Gemini format
+        // Add conversation history
         conversationHistory.forEach(msg => {
-            if (msg.role === 'user' || msg.role === 'assistant') {
-                contents.push({
-                    role: msg.role === 'assistant' ? 'model' : 'user',
-                    parts: [{ text: msg.content }]
+            if (msg.role === 'user') {
+                input.push({
+                    role: 'user',
+                    content: [{ type: 'text', text: msg.content }]
+                });
+            } else if (msg.role === 'assistant') {
+                input.push({
+                    role: 'model',
+                    content: [{ type: 'text', text: msg.content }]
                 });
             }
         });
         
         const requestBody = {
-            contents: contents,
-            generationConfig: {
+            model: aiSettings.model,
+            input: input,
+            generation_config: {
                 temperature: aiSettings.temperature,
-                maxOutputTokens: aiSettings.maxTokens,
-                topP: aiSettings.topP
+                max_output_tokens: aiSettings.maxTokens,
+                top_p: aiSettings.topP,
+                thinking_level: aiSettings.thinkingLevel
             }
         };
         
-        const url = `${API_ENDPOINTS.gemini}/${aiSettings.model}:generateContent?key=${API_KEYS.gemini}`;
+        // Add system instruction if present
+        if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
+            requestBody.system_instruction = aiSettings.systemPrompt;
+        }
+        
+        const url = `https://generativelanguage.googleapis.com/v1beta/interactions:create?key=${API_KEYS.gemini}`;
         
         const response = await fetch(url, {
             method: 'POST',
@@ -404,11 +405,25 @@ async function sendToGemini(message) {
         
         const data = await response.json();
         
-        if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-            throw new Error('Invalid Gemini response format');
+        // Extract text from outputs array
+        if (!data.outputs || data.outputs.length === 0) {
+            throw new Error('Invalid Gemini response format: no outputs');
         }
         
-        return data.candidates[0].content.parts[0].text;
+        // Find the last text output (skip thoughts)
+        let textOutput = null;
+        for (let i = data.outputs.length - 1; i >= 0; i--) {
+            if (data.outputs[i].type === 'text') {
+                textOutput = data.outputs[i].text;
+                break;
+            }
+        }
+        
+        if (!textOutput) {
+            throw new Error('No text output found in response');
+        }
+        
+        return textOutput;
     } catch (error) {
         console.error('Gemini Error:', error);
         throw error;
@@ -523,10 +538,10 @@ async function sendToOllama(message) {
 // Model options per provider
 const MODEL_OPTIONS = {
     gemini: [
-        { value: 'gemini-1.5-flash-latest', label: 'Gemini 1.5 Flash (Latest)' },
-        { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-        { value: 'gemini-1.5-pro-latest', label: 'Gemini 1.5 Pro (Latest)' },
-        { value: 'gemini-pro', label: 'Gemini Pro' }
+        { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview)' },
+        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+        { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Preview)' }
     ],
     openrouter: [
         { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
@@ -570,6 +585,7 @@ function initializeSettings() {
     document.getElementById('providerSelect').addEventListener('change', (e) => {
         const provider = e.target.value;
         updateModelOptions(provider);
+        updateProviderSpecificSettings(provider);
     });
     
     // Update slider values in real-time
@@ -604,6 +620,17 @@ function updateModelOptions(provider) {
     }
 }
 
+function updateProviderSpecificSettings(provider) {
+    const thinkingLevelGroup = document.getElementById('thinkingLevelGroup');
+    
+    // Show thinking level only for Gemini
+    if (provider === 'gemini') {
+        thinkingLevelGroup.style.display = 'block';
+    } else {
+        thinkingLevelGroup.style.display = 'none';
+    }
+}
+
 function updateSettingsUI() {
     document.getElementById('providerSelect').value = aiSettings.provider;
     document.getElementById('systemPrompt').value = aiSettings.systemPrompt;
@@ -614,11 +641,17 @@ function updateSettingsUI() {
     document.getElementById('topP').value = aiSettings.topP;
     document.getElementById('topPValue').textContent = aiSettings.topP;
     
-    // Update model options
+    // Update model options and provider-specific settings
     updateModelOptions(aiSettings.provider);
+    updateProviderSpecificSettings(aiSettings.provider);
     
     // Set current model
     document.getElementById('modelSelect').value = aiSettings.model;
+    
+    // Set thinking level if Gemini
+    if (aiSettings.thinkingLevel) {
+        document.getElementById('thinkingLevel').value = aiSettings.thinkingLevel;
+    }
 }
 
 function saveSettingsFromUI() {
@@ -628,6 +661,11 @@ function saveSettingsFromUI() {
     aiSettings.temperature = parseFloat(document.getElementById('temperature').value);
     aiSettings.maxTokens = parseInt(document.getElementById('maxTokens').value);
     aiSettings.topP = parseFloat(document.getElementById('topP').value);
+    
+    // Save thinking level if Gemini
+    if (aiSettings.provider === 'gemini') {
+        aiSettings.thinkingLevel = document.getElementById('thinkingLevel').value;
+    }
     
     // Save to localStorage
     localStorage.setItem('aiSettings', JSON.stringify(aiSettings));
