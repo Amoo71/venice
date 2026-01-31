@@ -4,11 +4,11 @@ const PASSWORD_CHECK_DELAY = 2000; // 2 seconds
 
 // HuggingFace Configuration
 const DEFAULT_HF_MODEL = 'mistralai/Mistral-7B-Instruct-v0.2';
+const HF_API_KEY = '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';
 
-// Use Vercel proxy in production, direct API in local development
-const API_PROXY_ENDPOINT = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-    ? '/api/chat'  // Local Vercel dev server
-    : '/api/chat';  // Production Vercel
+// CORS Proxy - use public proxy as fallback
+const CORS_PROXY = 'https://corsproxy.io/?';
+const USE_CORS_PROXY = true; // Set to false to use direct API (will fail in browser)
 
 // AI Settings (defaults)
 let aiSettings = {
@@ -373,19 +373,29 @@ async function sendToHuggingFace(message, retryCount = 0) {
             }
         });
         
+        const hfEndpoint = `https://api-inference.huggingface.co/models/${aiSettings.model}`;
+        const endpoint = USE_CORS_PROXY ? CORS_PROXY + encodeURIComponent(hfEndpoint) : hfEndpoint;
+        
         const requestBody = {
-            model: aiSettings.model,
-            prompt: prompt,
-            temperature: aiSettings.temperature,
-            max_tokens: aiSettings.maxTokens,
-            top_p: aiSettings.topP
+            inputs: prompt,
+            parameters: {
+                temperature: aiSettings.temperature,
+                max_new_tokens: aiSettings.maxTokens,
+                top_p: aiSettings.topP,
+                return_full_text: false
+            },
+            options: {
+                wait_for_model: true,
+                use_cache: false
+            }
         };
         
-        console.log('Sending to proxy:', API_PROXY_ENDPOINT);
+        console.log('Sending to HuggingFace via CORS proxy:', endpoint);
         
-        const response = await fetch(API_PROXY_ENDPOINT, {
+        const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
+                'Authorization': `Bearer ${HF_API_KEY}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(requestBody)
