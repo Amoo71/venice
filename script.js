@@ -1,24 +1,23 @@
 // Configuration
 const CORRECT_PASSWORD = '1312';
-// Replace Venice AI with a free inference provider (e.g., Hugging Face Inference API).
-// You should set FREE_API_KEY to your provider's API key if required.
-// For Hugging Face, you can create a free API key at https://huggingface.co/settings/tokens
-const FREE_API_KEY = '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'; // Provide your free API key here if needed
-// This endpoint is OpenAI‑compatible and routed through Hugging Face's inference router.
-const FREE_API_URL = 'https://router.huggingface.co/v1/chat/completions';
 const PASSWORD_CHECK_DELAY = 2000; // 2 seconds
+
+// API Endpoints
+const API_ENDPOINTS = {
+    gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
+    openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+    ollama: 'https://api.ollamafree.com/api/chat'
+};
 
 // AI Settings (defaults)
 let aiSettings = {
-    model: 'venice-uncensored',
-    systemPrompt: '',
+    provider: 'gemini', // gemini, openrouter, ollama
+    apiKey: '', // User's API key (for providers that need it)
+    model: 'gemini-2.0-flash-exp', // Default model per provider
+    systemPrompt: 'You are a helpful AI assistant.',
     temperature: 0.7,
     maxTokens: 2000,
-    topP: 0.9,
-    frequencyPenalty: 0,
-    presencePenalty: 0,
-    webSearch: 'off',
-    includeVeniceSystemPrompt: true
+    topP: 0.9
 };
 
 // State
@@ -194,13 +193,12 @@ async function handleSendMessage() {
     // Show loading indicator
     const loadingId = addLoadingMessage();
     
-    // Send to the free AI backend
+    // Send to Venice AI
     try {
         isProcessing = true;
         sendButton.disabled = true;
         
-            // Send the message to our free AI backend instead of Venice AI
-            const response = await sendToFreeAI(message);
+        const response = await sendToAI(message);
         
         // Remove loading indicator
         removeLoadingMessage(loadingId);
@@ -329,89 +327,207 @@ function scrollToBottom() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-// Sends the user's message to the free inference API.  This function was
-// previously tied to Venice AI; it now uses a generic OpenAI‑compatible
-// endpoint (e.g., Hugging Face Inference API).
-async function sendToFreeAI(message) {
+async function sendToAI(message) {
     try {
-        // Build messages array with system prompt if set
+        switch (aiSettings.provider) {
+            case 'gemini':
+                return await sendToGemini(message);
+            case 'openrouter':
+                return await sendToOpenRouter(message);
+            case 'ollama':
+                return await sendToOllama(message);
+            default:
+                throw new Error(`Unknown provider: ${aiSettings.provider}`);
+        }
+    } catch (error) {
+        console.error('AI Error:', error);
+        throw error;
+    }
+}
+
+async function sendToGemini(message) {
+    try {
+        // Build messages with system prompt
+        const contents = [];
+        
+        // Add system prompt as first user message if present
+        if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
+            contents.push({
+                role: 'user',
+                parts: [{ text: aiSettings.systemPrompt }]
+            });
+            contents.push({
+                role: 'model',
+                parts: [{ text: 'Understood. I will follow these instructions.' }]
+            });
+        }
+        
+        // Convert conversation history to Gemini format
+        conversationHistory.forEach(msg => {
+            if (msg.role === 'user' || msg.role === 'assistant') {
+                contents.push({
+                    role: msg.role === 'assistant' ? 'model' : 'user',
+                    parts: [{ text: msg.content }]
+                });
+            }
+        });
+        
+        const requestBody = {
+            contents: contents,
+            generationConfig: {
+                temperature: aiSettings.temperature,
+                maxOutputTokens: aiSettings.maxTokens,
+                topP: aiSettings.topP
+            }
+        };
+        
+        const url = `${API_ENDPOINTS.gemini}/${aiSettings.model}:generateContent?key=${aiSettings.apiKey}`;
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Gemini API failed: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+            throw new Error('Invalid Gemini response format');
+        }
+        
+        return data.candidates[0].content.parts[0].text;
+    } catch (error) {
+        console.error('Gemini Error:', error);
+        throw error;
+    }
+}
+
+async function sendToOpenRouter(message) {
+    try {
         const messages = [];
+        
         if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
             messages.push({
                 role: 'system',
                 content: aiSettings.systemPrompt
             });
         }
+        
         messages.push(...conversationHistory);
         
-        // Map our internal model names to identifiers understood by the free API.
-        // These values correspond to model IDs hosted on the provider (e.g. Hugging Face).
-        const modelMap = {
-            'venice-uncensored': 'openai/gpt-oss-120b',
-            'llama-3.3-70b': 'meta-llama/Meta-Llama-3-70B-Instruct',
-            'zai-org-glm-4.7': 'zai-org/GLM-4.7',
-            'mistral-31-24b': 'mistralai/Mixtral-8x22B-Instruct-v0.1'
-        };
-
-        const modelId = modelMap[aiSettings.model] || aiSettings.model;
-
-        console.log('Sending to free AI:', {
-            url: FREE_API_URL,
-            model: modelId,
-            messages: messages,
-            settings: aiSettings
-        });
-
-        // Build request body following the OpenAI chat completions format.
         const requestBody = {
-            model: modelId,
+            model: aiSettings.model,
             messages: messages,
             temperature: aiSettings.temperature,
             max_tokens: aiSettings.maxTokens,
-            top_p: aiSettings.topP,
-            frequency_penalty: aiSettings.frequencyPenalty,
-            presence_penalty: aiSettings.presencePenalty,
-            stream: false
+            top_p: aiSettings.topP
         };
-
-        // Note: Additional provider‑specific parameters (such as web search or
-        // system prompts injected by Venice) are intentionally omitted here.
-
-        const headers = {
-            'Content-Type': 'application/json'
-        };
-        // Only include the Authorization header if a key has been provided.
-        if (FREE_API_KEY && FREE_API_KEY.trim()) {
-            headers['Authorization'] = `Bearer ${FREE_API_KEY}`;
-        }
-
-        const response = await fetch(FREE_API_URL, {
+        
+        const response = await fetch(API_ENDPOINTS.openrouter, {
             method: 'POST',
-            headers: headers,
+            headers: {
+                'Authorization': `Bearer ${aiSettings.apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': window.location.href,
+                'X-Title': 'Venice AI Chat'
+            },
             body: JSON.stringify(requestBody)
         });
         
-        console.log('Response status:', response.status);
-        
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('API Error Response:', errorText);
-            throw new Error(`API request failed: ${response.status} - ${errorText}`);
+            throw new Error(`OpenRouter API failed: ${response.status} - ${errorText}`);
         }
         
         const data = await response.json();
-        console.log('API Response:', data);
         
         if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            throw new Error('Invalid API response format');
+            throw new Error('Invalid OpenRouter response format');
         }
         
         return data.choices[0].message.content;
     } catch (error) {
-        console.error('AI Error Details:', error);
+        console.error('OpenRouter Error:', error);
         throw error;
     }
 }
+
+async function sendToOllama(message) {
+    try {
+        const messages = [];
+        
+        if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
+            messages.push({
+                role: 'system',
+                content: aiSettings.systemPrompt
+            });
+        }
+        
+        messages.push(...conversationHistory);
+        
+        const requestBody = {
+            model: aiSettings.model,
+            messages: messages,
+            temperature: aiSettings.temperature,
+            max_tokens: aiSettings.maxTokens,
+            top_p: aiSettings.topP,
+            stream: false
+        };
+        
+        const response = await fetch(API_ENDPOINTS.ollama, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Ollama API failed: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.message || !data.message.content) {
+            throw new Error('Invalid Ollama response format');
+        }
+        
+        return data.message.content;
+    } catch (error) {
+        console.error('Ollama Error:', error);
+        throw error;
+    }
+}
+
+// Model options per provider
+const MODEL_OPTIONS = {
+    gemini: [
+        { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Experimental)' },
+        { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+        { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' }
+    ],
+    openrouter: [
+        { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+        { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+        { value: 'google/gemini-pro-1.5', label: 'Gemini Pro 1.5' },
+        { value: 'mistralai/mistral-large', label: 'Mistral Large' }
+    ],
+    ollama: [
+        { value: 'llama3.3:70b', label: 'Llama 3.3 70B' },
+        { value: 'llama3:8b-instruct', label: 'Llama 3 8B Instruct' },
+        { value: 'mistral:7b-v0.2', label: 'Mistral 7B v0.2' },
+        { value: 'deepseek-r1:7b', label: 'DeepSeek R1 7B' },
+        { value: 'qwen:7b-chat', label: 'Qwen 7B Chat' }
+    ]
+};
 
 // Settings Functions
 function initializeSettings() {
@@ -436,6 +552,13 @@ function initializeSettings() {
         }
     });
     
+    // Provider change handler
+    document.getElementById('providerSelect').addEventListener('change', (e) => {
+        const provider = e.target.value;
+        updateModelOptions(provider);
+        updateAPIKeyNote(provider);
+    });
+    
     // Update slider values in real-time
     document.getElementById('temperature').addEventListener('input', (e) => {
         document.getElementById('tempValue').textContent = e.target.value;
@@ -448,18 +571,40 @@ function initializeSettings() {
     document.getElementById('topP').addEventListener('input', (e) => {
         document.getElementById('topPValue').textContent = e.target.value;
     });
+}
+
+function updateModelOptions(provider) {
+    const modelSelect = document.getElementById('modelSelect');
+    modelSelect.innerHTML = '';
     
-    document.getElementById('frequencyPenalty').addEventListener('input', (e) => {
-        document.getElementById('freqValue').textContent = e.target.value;
+    const options = MODEL_OPTIONS[provider] || [];
+    options.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        modelSelect.appendChild(option);
     });
     
-    document.getElementById('presencePenalty').addEventListener('input', (e) => {
-        document.getElementById('presValue').textContent = e.target.value;
-    });
+    // Set first option as default if current model not in list
+    if (options.length > 0 && !options.find(o => o.value === aiSettings.model)) {
+        modelSelect.value = options[0].value;
+    }
+}
+
+function updateAPIKeyNote(provider) {
+    const apiKeyNote = document.getElementById('apiKeyNote');
+    if (provider === 'ollama') {
+        apiKeyNote.textContent = '(Not required for OllamaFreeAPI)';
+    } else if (provider === 'gemini') {
+        apiKeyNote.textContent = '(Required - Get free key from Google AI Studio)';
+    } else {
+        apiKeyNote.textContent = '(Required for OpenRouter)';
+    }
 }
 
 function updateSettingsUI() {
-    document.getElementById('modelSelect').value = aiSettings.model;
+    document.getElementById('providerSelect').value = aiSettings.provider;
+    document.getElementById('apiKey').value = aiSettings.apiKey || '';
     document.getElementById('systemPrompt').value = aiSettings.systemPrompt;
     document.getElementById('temperature').value = aiSettings.temperature;
     document.getElementById('tempValue').textContent = aiSettings.temperature;
@@ -467,35 +612,36 @@ function updateSettingsUI() {
     document.getElementById('tokensValue').textContent = aiSettings.maxTokens;
     document.getElementById('topP').value = aiSettings.topP;
     document.getElementById('topPValue').textContent = aiSettings.topP;
-    document.getElementById('frequencyPenalty').value = aiSettings.frequencyPenalty;
-    document.getElementById('freqValue').textContent = aiSettings.frequencyPenalty;
-    document.getElementById('presencePenalty').value = aiSettings.presencePenalty;
-    document.getElementById('presValue').textContent = aiSettings.presencePenalty;
-    document.getElementById('webSearch').value = aiSettings.webSearch;
-    document.getElementById('veniceSystemPrompt').checked = aiSettings.includeVeniceSystemPrompt;
+    
+    // Update model options and API key note
+    updateModelOptions(aiSettings.provider);
+    updateAPIKeyNote(aiSettings.provider);
+    
+    // Set current model
+    document.getElementById('modelSelect').value = aiSettings.model;
 }
 
 function saveSettingsFromUI() {
+    aiSettings.provider = document.getElementById('providerSelect').value;
+    aiSettings.apiKey = document.getElementById('apiKey').value;
     aiSettings.model = document.getElementById('modelSelect').value;
     aiSettings.systemPrompt = document.getElementById('systemPrompt').value;
     aiSettings.temperature = parseFloat(document.getElementById('temperature').value);
     aiSettings.maxTokens = parseInt(document.getElementById('maxTokens').value);
     aiSettings.topP = parseFloat(document.getElementById('topP').value);
-    aiSettings.frequencyPenalty = parseFloat(document.getElementById('frequencyPenalty').value);
-    aiSettings.presencePenalty = parseFloat(document.getElementById('presencePenalty').value);
-    aiSettings.webSearch = document.getElementById('webSearch').value;
-    aiSettings.includeVeniceSystemPrompt = document.getElementById('veniceSystemPrompt').checked;
     
     // Save to localStorage
-    localStorage.setItem('veniceAISettings', JSON.stringify(aiSettings));
+    localStorage.setItem('aiSettings', JSON.stringify(aiSettings));
     console.log('Settings saved:', aiSettings);
 }
 
 function loadSettings() {
-    const saved = localStorage.getItem('veniceAISettings');
+    const saved = localStorage.getItem('aiSettings');
     if (saved) {
         try {
-            aiSettings = JSON.parse(saved);
+            const loadedSettings = JSON.parse(saved);
+            // Merge with defaults to handle missing fields
+            aiSettings = { ...aiSettings, ...loadedSettings };
             console.log('Settings loaded:', aiSettings);
         } catch (e) {
             console.error('Failed to load settings:', e);

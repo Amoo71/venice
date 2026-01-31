@@ -53,7 +53,7 @@
             <div id="messagesContainer" class="messages-container">
                 <div class="welcome-message">
                     <div class="welcome-icon">🤖</div>
-                    <div class="welcome-text">Start a conversation with Venice AI</div>
+                    <div class="welcome-text">Start a conversation with AI</div>
                 </div>
             </div>
             
@@ -102,14 +102,27 @@
             </div>
             
             <div class="modal-body">
+                <!-- API Provider -->
+                <div class="setting-group">
+                    <label for="providerSelect">API Provider</label>
+                    <select id="providerSelect" class="glass-input">
+                        <option value="gemini">Google Gemini (Free)</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="ollama">OllamaFreeAPI (Free)</option>
+                    </select>
+                </div>
+                
+                <!-- API Key -->
+                <div class="setting-group">
+                    <label for="apiKey">API Key <span id="apiKeyNote" style="font-size: 0.85em; opacity: 0.7;">(Required for Gemini & OpenRouter)</span></label>
+                    <input type="password" id="apiKey" class="glass-input" placeholder="Enter your API key">
+                </div>
+                
                 <!-- Model Selection -->
                 <div class="setting-group">
                     <label for="modelSelect">Model</label>
                     <select id="modelSelect" class="glass-input">
-                        <option value="venice-uncensored">venice-uncensored (No filtering)</option>
-                        <option value="llama-3.3-70b">llama-3.3-70b (Balanced)</option>
-                        <option value="zai-org-glm-4.7">zai-org-glm-4.7 (Flagship)</option>
-                        <option value="mistral-31-24b">mistral-31-24b (Vision + Functions)</option>
+                        <!-- Dynamic options based on provider -->
                     </select>
                 </div>
                 
@@ -135,36 +148,6 @@
                 <div class="setting-group">
                     <label for="topP">Top P: <span id="topPValue">0.9</span></label>
                     <input type="range" id="topP" min="0" max="1" step="0.1" value="0.9" class="slider">
-                </div>
-                
-                <!-- Frequency Penalty -->
-                <div class="setting-group">
-                    <label for="frequencyPenalty">Frequency Penalty: <span id="freqValue">0.0</span></label>
-                    <input type="range" id="frequencyPenalty" min="0" max="2" step="0.1" value="0" class="slider">
-                </div>
-                
-                <!-- Presence Penalty -->
-                <div class="setting-group">
-                    <label for="presencePenalty">Presence Penalty: <span id="presValue">0.0</span></label>
-                    <input type="range" id="presencePenalty" min="0" max="2" step="0.1" value="0" class="slider">
-                </div>
-                
-                <!-- Web Search -->
-                <div class="setting-group">
-                    <label for="webSearch">Enable Web Search</label>
-                    <select id="webSearch" class="glass-input">
-                        <option value="off">Off</option>
-                        <option value="auto">Auto</option>
-                        <option value="always">Always</option>
-                    </select>
-                </div>
-                
-                <!-- Venice System Prompt -->
-                <div class="setting-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="veniceSystemPrompt" checked>
-                        Include Venice System Prompt
-                    </label>
                 </div>
             </div>
             
