@@ -327,12 +327,31 @@ async function sendToAI(message) {
     try {
         return await sendToHuggingFace(message);
     } catch (error) {
-        console.error('HuggingFace Error:', error);
-        throw error;
+        console.error('AI Error:', error);
+        
+        // Provide user-friendly error messages
+        let userMessage = error.message;
+        
+        if (error.message.includes('Failed to fetch')) {
+            userMessage = '❌ Network error: Cannot connect to HuggingFace API.\n\nPossible solutions:\n• Check your internet connection\n• Try again in a moment\n• The model might be starting up (can take 20-30s)';
+        } else if (error.message.includes('loading')) {
+            userMessage = '⏳ Model is loading on HuggingFace servers.\n\nPlease wait 20-30 seconds and try again.\nThis is normal for the first request.';
+        } else if (error.message.includes('401') || error.message.includes('403')) {
+            userMessage = '🔑 API Key error.\n\nThe HuggingFace API key may be invalid.\nGet a free key at: https://huggingface.co/settings/tokens';
+        } else if (error.message.includes('429')) {
+            userMessage = '⏰ Rate limit exceeded.\n\nPlease wait a moment before trying again.';
+        } else if (error.message.includes('500') || error.message.includes('503')) {
+            userMessage = '🔧 HuggingFace server error.\n\nThe service might be temporarily down.\nTry again in a few minutes.';
+        }
+        
+        throw new Error(userMessage);
     }
 }
 
-async function sendToHuggingFace(message) {
+async function sendToHuggingFace(message, retryCount = 0) {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 3000; // 3 seconds
+    
     try {
         // Build prompt from conversation history
         let prompt = '';
@@ -360,6 +379,9 @@ async function sendToHuggingFace(message) {
                 max_new_tokens: aiSettings.maxTokens,
                 top_p: aiSettings.topP,
                 return_full_text: false
+            },
+            options: {
+                wait_for_model: true
             }
         };
         
@@ -376,11 +398,42 @@ async function sendToHuggingFace(message) {
         
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`HuggingFace API failed: ${response.status} - ${errorText}`);
+            let errorData;
+            
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                errorData = { error: errorText };
+            }
+            
+            // Check if model is loading
+            if (errorData.error && typeof errorData.error === 'string' && 
+                (errorData.error.includes('loading') || errorData.error.includes('currently loading'))) {
+                
+                if (retryCount < MAX_RETRIES) {
+                    console.log(`Model loading, retrying in ${RETRY_DELAY/1000}s... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+                    return await sendToHuggingFace(message, retryCount + 1);
+                } else {
+                    throw new Error('Model is still loading. Please wait a moment and try again.');
+                }
+            }
+            
+            throw new Error(`HuggingFace API error (${response.status}): ${errorData.error || errorText}`);
         }
         
         const data = await response.json();
         console.log('HuggingFace response:', data);
+        
+        // Check for error in response
+        if (data.error) {
+            if (data.error.includes('loading') && retryCount < MAX_RETRIES) {
+                console.log(`Model loading, retrying in ${RETRY_DELAY/1000}s... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+                return await sendToHuggingFace(message, retryCount + 1);
+            }
+            throw new Error(data.error);
+        }
         
         // Parse HuggingFace response format
         if (Array.isArray(data) && data[0] && data[0].generated_text) {
@@ -395,6 +448,12 @@ async function sendToHuggingFace(message) {
         throw new Error('Invalid HuggingFace response format');
     } catch (error) {
         console.error('HuggingFace Error:', error);
+        
+        // Better error messages
+        if (error.message.includes('Failed to fetch')) {
+            throw new Error('Network error: Unable to reach HuggingFace API. Check your internet connection.');
+        }
+        
         throw error;
     }
 }
