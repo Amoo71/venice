@@ -2,18 +2,24 @@
 const CORRECT_PASSWORD = '1312';
 const PASSWORD_CHECK_DELAY = 2000; // 2 seconds
 
+// API Keys - ADD YOUR KEYS HERE
+const API_KEYS = {
+    gemini: 'AIzaSyBh_v2GjsXZdyMoU7kQNaCadJZS4taEA1E',  // Get from: https://makersuite.google.com/app/apikey
+    openrouter: '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',  // Get from: https://openrouter.ai/keys
+    ollama: ''  // Not needed - leave empty
+};
+
 // API Endpoints
 const API_ENDPOINTS = {
     gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
     openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-    ollama: 'https://api.ollamafree.com/api/chat'
+    ollama: 'https://ollamafree.us.to/api/chat'  // Updated endpoint
 };
 
 // AI Settings (defaults)
 let aiSettings = {
-    provider: 'gemini', // gemini, openrouter, ollama
-    apiKey: '', // User's API key (for providers that need it)
-    model: 'gemini-2.0-flash-exp', // Default model per provider
+    provider: 'ollama', // gemini, openrouter, ollama
+    model: 'llama3.3:70b', // Default model per provider
     systemPrompt: 'You are a helpful AI assistant.',
     temperature: 0.7,
     maxTokens: 2000,
@@ -381,7 +387,7 @@ async function sendToGemini(message) {
             }
         };
         
-        const url = `${API_ENDPOINTS.gemini}/${aiSettings.model}:generateContent?key=${aiSettings.apiKey}`;
+        const url = `${API_ENDPOINTS.gemini}/${aiSettings.model}:generateContent?key=${API_KEYS.gemini}`;
         
         const response = await fetch(url, {
             method: 'POST',
@@ -433,7 +439,7 @@ async function sendToOpenRouter(message) {
         const response = await fetch(API_ENDPOINTS.openrouter, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${aiSettings.apiKey}`,
+                'Authorization': `Bearer ${API_KEYS.openrouter}`,
                 'Content-Type': 'application/json',
                 'HTTP-Referer': window.location.href,
                 'X-Title': 'Venice AI Chat'
@@ -556,7 +562,6 @@ function initializeSettings() {
     document.getElementById('providerSelect').addEventListener('change', (e) => {
         const provider = e.target.value;
         updateModelOptions(provider);
-        updateAPIKeyNote(provider);
     });
     
     // Update slider values in real-time
@@ -591,20 +596,8 @@ function updateModelOptions(provider) {
     }
 }
 
-function updateAPIKeyNote(provider) {
-    const apiKeyNote = document.getElementById('apiKeyNote');
-    if (provider === 'ollama') {
-        apiKeyNote.textContent = '(Not required for OllamaFreeAPI)';
-    } else if (provider === 'gemini') {
-        apiKeyNote.textContent = '(Required - Get free key from Google AI Studio)';
-    } else {
-        apiKeyNote.textContent = '(Required for OpenRouter)';
-    }
-}
-
 function updateSettingsUI() {
     document.getElementById('providerSelect').value = aiSettings.provider;
-    document.getElementById('apiKey').value = aiSettings.apiKey || '';
     document.getElementById('systemPrompt').value = aiSettings.systemPrompt;
     document.getElementById('temperature').value = aiSettings.temperature;
     document.getElementById('tempValue').textContent = aiSettings.temperature;
@@ -613,9 +606,8 @@ function updateSettingsUI() {
     document.getElementById('topP').value = aiSettings.topP;
     document.getElementById('topPValue').textContent = aiSettings.topP;
     
-    // Update model options and API key note
+    // Update model options
     updateModelOptions(aiSettings.provider);
-    updateAPIKeyNote(aiSettings.provider);
     
     // Set current model
     document.getElementById('modelSelect').value = aiSettings.model;
@@ -623,7 +615,6 @@ function updateSettingsUI() {
 
 function saveSettingsFromUI() {
     aiSettings.provider = document.getElementById('providerSelect').value;
-    aiSettings.apiKey = document.getElementById('apiKey').value;
     aiSettings.model = document.getElementById('modelSelect').value;
     aiSettings.systemPrompt = document.getElementById('systemPrompt').value;
     aiSettings.temperature = parseFloat(document.getElementById('temperature').value);
