@@ -13,13 +13,13 @@ const API_KEYS = {
 const API_ENDPOINTS = {
     gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
     openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-    ollama: 'https://ollamafree.us.to/api/chat'  // Updated endpoint
+    ollama: 'https://ollama.nov.api.zukijourney.com/v1/chat/completions'  // Alternative working endpoint
 };
 
 // AI Settings (defaults)
 let aiSettings = {
     provider: 'ollama', // gemini, openrouter, ollama
-    model: 'llama3.3:70b', // Default model per provider
+    model: 'llama-3.1-70b', // Default model per provider
     systemPrompt: 'You are a helpful AI assistant.',
     temperature: 0.7,
     maxTokens: 2000,
@@ -490,7 +490,8 @@ async function sendToOllama(message) {
         const response = await fetch(API_ENDPOINTS.ollama, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer anything'  // Some endpoints need a token placeholder
             },
             body: JSON.stringify(requestBody)
         });
@@ -502,11 +503,17 @@ async function sendToOllama(message) {
         
         const data = await response.json();
         
-        if (!data.message || !data.message.content) {
-            throw new Error('Invalid Ollama response format');
+        // Handle OpenAI-compatible response format
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+            return data.choices[0].message.content;
         }
         
-        return data.message.content;
+        // Handle Ollama native format
+        if (data.message && data.message.content) {
+            return data.message.content;
+        }
+        
+        throw new Error('Invalid Ollama response format');
     } catch (error) {
         console.error('Ollama Error:', error);
         throw error;
@@ -516,9 +523,10 @@ async function sendToOllama(message) {
 // Model options per provider
 const MODEL_OPTIONS = {
     gemini: [
-        { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Experimental)' },
+        { value: 'gemini-1.5-flash-latest', label: 'Gemini 1.5 Flash (Latest)' },
         { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-        { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' }
+        { value: 'gemini-1.5-pro-latest', label: 'Gemini 1.5 Pro (Latest)' },
+        { value: 'gemini-pro', label: 'Gemini Pro' }
     ],
     openrouter: [
         { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
@@ -527,11 +535,11 @@ const MODEL_OPTIONS = {
         { value: 'mistralai/mistral-large', label: 'Mistral Large' }
     ],
     ollama: [
-        { value: 'llama3.3:70b', label: 'Llama 3.3 70B' },
-        { value: 'llama3:8b-instruct', label: 'Llama 3 8B Instruct' },
-        { value: 'mistral:7b-v0.2', label: 'Mistral 7B v0.2' },
-        { value: 'deepseek-r1:7b', label: 'DeepSeek R1 7B' },
-        { value: 'qwen:7b-chat', label: 'Qwen 7B Chat' }
+        { value: 'llama-3.1-70b', label: 'Llama 3.1 70B' },
+        { value: 'llama-3.1-8b', label: 'Llama 3.1 8B' },
+        { value: 'gemma-2-9b', label: 'Gemma 2 9B' },
+        { value: 'mistral-7b', label: 'Mistral 7B' },
+        { value: 'qwen-2-7b', label: 'Qwen 2 7B' }
     ]
 };
 
