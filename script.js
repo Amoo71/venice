@@ -354,38 +354,40 @@ async function sendToAI(message) {
 
 async function sendToGemini(message) {
     try {
-        // Build conversation history in new Interactions API format
-        const input = [];
+        // Build conversation history - format depends on history length
+        let inputContent;
         
-        // Add conversation history
-        conversationHistory.forEach(msg => {
-            if (msg.role === 'user') {
-                input.push({
-                    role: 'user',
+        if (conversationHistory.length === 0) {
+            // Should not happen, but handle it
+            inputContent = message;
+        } else if (conversationHistory.length === 1) {
+            // Single turn - just send the text
+            inputContent = conversationHistory[0].content;
+        } else {
+            // Multi-turn conversation - send as array of turns
+            inputContent = [];
+            conversationHistory.forEach(msg => {
+                inputContent.push({
+                    role: msg.role === 'assistant' ? 'model' : msg.role,
                     content: [{ type: 'text', text: msg.content }]
                 });
-            } else if (msg.role === 'assistant') {
-                input.push({
-                    role: 'model',
-                    content: [{ type: 'text', text: msg.content }]
-                });
-            }
-        });
+            });
+        }
         
         const requestBody = {
             model: aiSettings.model,
-            input: input,
-            generation_config: {
+            input: inputContent,
+            generationConfig: {
                 temperature: aiSettings.temperature,
-                max_output_tokens: aiSettings.maxTokens,
-                top_p: aiSettings.topP,
-                thinking_level: aiSettings.thinkingLevel
+                maxOutputTokens: aiSettings.maxTokens,
+                topP: aiSettings.topP,
+                thinkingLevel: aiSettings.thinkingLevel
             }
         };
         
         // Add system instruction if present
         if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
-            requestBody.system_instruction = aiSettings.systemPrompt;
+            requestBody.systemInstruction = aiSettings.systemPrompt;
         }
         
         const url = `https://generativelanguage.googleapis.com/v1beta/interactions:create?key=${API_KEYS.gemini}`;
@@ -404,6 +406,7 @@ async function sendToGemini(message) {
         }
         
         const data = await response.json();
+        console.log('Gemini response:', data);
         
         // Extract text from outputs array
         if (!data.outputs || data.outputs.length === 0) {
