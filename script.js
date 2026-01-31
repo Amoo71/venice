@@ -2,10 +2,13 @@
 const CORRECT_PASSWORD = '1312';
 const PASSWORD_CHECK_DELAY = 2000; // 2 seconds
 
-// HuggingFace Inference API Configuration
-const HF_API_ENDPOINT = 'https://api-inference.huggingface.co/models/';
+// HuggingFace Configuration
 const DEFAULT_HF_MODEL = 'mistralai/Mistral-7B-Instruct-v0.2';
-const HF_API_KEY = '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'; // Free tier API key
+
+// Use Vercel proxy in production, direct API in local development
+const API_PROXY_ENDPOINT = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+    ? '/api/chat'  // Local Vercel dev server
+    : '/api/chat';  // Production Vercel
 
 // AI Settings (defaults)
 let aiSettings = {
@@ -370,27 +373,19 @@ async function sendToHuggingFace(message, retryCount = 0) {
             }
         });
         
-        const endpoint = HF_API_ENDPOINT + aiSettings.model;
-        
         const requestBody = {
-            inputs: prompt,
-            parameters: {
-                temperature: aiSettings.temperature,
-                max_new_tokens: aiSettings.maxTokens,
-                top_p: aiSettings.topP,
-                return_full_text: false
-            },
-            options: {
-                wait_for_model: true
-            }
+            model: aiSettings.model,
+            prompt: prompt,
+            temperature: aiSettings.temperature,
+            max_tokens: aiSettings.maxTokens,
+            top_p: aiSettings.topP
         };
         
-        console.log('Sending to HuggingFace:', endpoint);
+        console.log('Sending to proxy:', API_PROXY_ENDPOINT);
         
-        const response = await fetch(endpoint, {
+        const response = await fetch(API_PROXY_ENDPOINT, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${HF_API_KEY}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(requestBody)
