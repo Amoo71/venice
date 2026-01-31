@@ -102,22 +102,19 @@
             </div>
             
             <div class="modal-body">
-                <!-- API Provider -->
-                <div class="setting-group">
-                    <label for="providerSelect">API Provider</label>
-                    <select id="providerSelect" class="glass-input">
-                        <option value="gemini">Google Gemini (Free)</option>
-                        <option value="openrouter">OpenRouter</option>
-                        <option value="ollama">OllamaFreeAPI (Free)</option>
-                    </select>
-                </div>
-                
                 <!-- Model Selection -->
                 <div class="setting-group">
-                    <label for="modelSelect">Model</label>
+                    <label for="modelSelect">HuggingFace Model</label>
                     <select id="modelSelect" class="glass-input">
-                        <!-- Dynamic options based on provider -->
+                        <option value="mistralai/Mistral-7B-Instruct-v0.2">Mistral 7B Instruct</option>
+                        <option value="mistralai/Mixtral-8x7B-Instruct-v0.1">Mixtral 8x7B Instruct</option>
+                        <option value="meta-llama/Llama-2-7b-chat-hf">Llama 2 7B Chat</option>
+                        <option value="meta-llama/Llama-2-13b-chat-hf">Llama 2 13B Chat</option>
+                        <option value="google/gemma-7b-it">Gemma 7B</option>
+                        <option value="tiiuae/falcon-7b-instruct">Falcon 7B Instruct</option>
+                        <option value="HuggingFaceH4/zephyr-7b-beta">Zephyr 7B Beta</option>
                     </select>
+                    <small style="color: rgba(255,255,255,0.6); margin-top: 4px; display: block;">Free HuggingFace Inference API</small>
                 </div>
                 
                 <!-- System Prompt -->
@@ -144,16 +141,6 @@
                     <input type="range" id="topP" min="0" max="1" step="0.1" value="0.9" class="slider">
                 </div>
                 
-                <!-- Thinking Level (Gemini only) -->
-                <div class="setting-group" id="thinkingLevelGroup" style="display: none;">
-                    <label for="thinkingLevel">Thinking Level (Gemini)</label>
-                    <select id="thinkingLevel" class="glass-input">
-                        <option value="minimal">Minimal (Fastest)</option>
-                        <option value="low">Low (Balanced)</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High (Best Quality)</option>
-                    </select>
-                </div>
             </div>
             
             <div class="modal-footer">

@@ -2,29 +2,18 @@
 const CORRECT_PASSWORD = '1312';
 const PASSWORD_CHECK_DELAY = 2000; // 2 seconds
 
-// API Keys - ADD YOUR KEYS HERE
-const API_KEYS = {
-    gemini: 'AIzaSyBh_v2GjsXZdyMoU7kQNaCadJZS4taEA1E',  // Get from: https://makersuite.google.com/app/apikey
-    openrouter: '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',  // Get from: https://openrouter.ai/keys
-    ollama: ''  // Not needed - leave empty
-};
-
-// API Endpoints
-const API_ENDPOINTS = {
-    gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
-    openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-    ollama: 'https://ollama.nov.api.zukijourney.com/v1/chat/completions'  // Alternative working endpoint
-};
+// HuggingFace Inference API Configuration
+const HF_API_ENDPOINT = 'https://api-inference.huggingface.co/models/';
+const DEFAULT_HF_MODEL = 'mistralai/Mistral-7B-Instruct-v0.2';
+const HF_API_KEY = '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'; // Free tier API key
 
 // AI Settings (defaults)
 let aiSettings = {
-    provider: 'ollama', // gemini, openrouter, ollama
-    model: 'llama-3.1-70b', // Default model per provider
+    model: DEFAULT_HF_MODEL,
     systemPrompt: 'You are a helpful AI assistant.',
     temperature: 0.7,
     maxTokens: 2000,
-    topP: 0.9,
-    thinkingLevel: 'low' // Gemini thinking level: minimal, low, medium, high
+    topP: 0.9
 };
 
 // State
@@ -336,65 +325,50 @@ function scrollToBottom() {
 
 async function sendToAI(message) {
     try {
-        switch (aiSettings.provider) {
-            case 'gemini':
-                return await sendToGemini(message);
-            case 'openrouter':
-                return await sendToOpenRouter(message);
-            case 'ollama':
-                return await sendToOllama(message);
-            default:
-                throw new Error(`Unknown provider: ${aiSettings.provider}`);
-        }
+        return await sendToHuggingFace(message);
     } catch (error) {
-        console.error('AI Error:', error);
+        console.error('HuggingFace Error:', error);
         throw error;
     }
 }
 
-async function sendToGemini(message) {
+async function sendToHuggingFace(message) {
     try {
-        // Build conversation history - format depends on history length
-        let inputContent;
+        // Build prompt from conversation history
+        let prompt = '';
         
-        if (conversationHistory.length === 0) {
-            // Should not happen, but handle it
-            inputContent = message;
-        } else if (conversationHistory.length === 1) {
-            // Single turn - just send the text
-            inputContent = conversationHistory[0].content;
-        } else {
-            // Multi-turn conversation - send as array of turns
-            inputContent = [];
-            conversationHistory.forEach(msg => {
-                inputContent.push({
-                    role: msg.role === 'assistant' ? 'model' : msg.role,
-                    content: [{ type: 'text', text: msg.content }]
-                });
-            });
+        // Add system prompt if configured
+        if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
+            prompt += `[INST] ${aiSettings.systemPrompt} [/INST]\n\n`;
         }
         
+        // Add conversation history in Mistral/Llama format
+        conversationHistory.forEach(msg => {
+            if (msg.role === 'user') {
+                prompt += `[INST] ${msg.content} [/INST]\n`;
+            } else {
+                prompt += `${msg.content}\n\n`;
+            }
+        });
+        
+        const endpoint = HF_API_ENDPOINT + aiSettings.model;
+        
         const requestBody = {
-            model: aiSettings.model,
-            input: inputContent,
-            generationConfig: {
+            inputs: prompt,
+            parameters: {
                 temperature: aiSettings.temperature,
-                maxOutputTokens: aiSettings.maxTokens,
-                topP: aiSettings.topP,
-                thinkingLevel: aiSettings.thinkingLevel
+                max_new_tokens: aiSettings.maxTokens,
+                top_p: aiSettings.topP,
+                return_full_text: false
             }
         };
         
-        // Add system instruction if present
-        if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
-            requestBody.systemInstruction = aiSettings.systemPrompt;
-        }
+        console.log('Sending to HuggingFace:', endpoint);
         
-        const url = `https://generativelanguage.googleapis.com/v1beta/interactions:create?key=${API_KEYS.gemini}`;
-        
-        const response = await fetch(url, {
+        const response = await fetch(endpoint, {
             method: 'POST',
             headers: {
+                'Authorization': `Bearer ${HF_API_KEY}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(requestBody)
@@ -402,164 +376,39 @@ async function sendToGemini(message) {
         
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Gemini API failed: ${response.status} - ${errorText}`);
+            throw new Error(`HuggingFace API failed: ${response.status} - ${errorText}`);
         }
         
         const data = await response.json();
-        console.log('Gemini response:', data);
+        console.log('HuggingFace response:', data);
         
-        // Extract text from outputs array
-        if (!data.outputs || data.outputs.length === 0) {
-            throw new Error('Invalid Gemini response format: no outputs');
+        // Parse HuggingFace response format
+        if (Array.isArray(data) && data[0] && data[0].generated_text) {
+            return data[0].generated_text.trim();
         }
         
-        // Find the last text output (skip thoughts)
-        let textOutput = null;
-        for (let i = data.outputs.length - 1; i >= 0; i--) {
-            if (data.outputs[i].type === 'text') {
-                textOutput = data.outputs[i].text;
-                break;
-            }
+        // Alternative format
+        if (data.generated_text) {
+            return data.generated_text.trim();
         }
         
-        if (!textOutput) {
-            throw new Error('No text output found in response');
-        }
-        
-        return textOutput;
+        throw new Error('Invalid HuggingFace response format');
     } catch (error) {
-        console.error('Gemini Error:', error);
+        console.error('HuggingFace Error:', error);
         throw error;
     }
 }
 
-async function sendToOpenRouter(message) {
-    try {
-        const messages = [];
-        
-        if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
-            messages.push({
-                role: 'system',
-                content: aiSettings.systemPrompt
-            });
-        }
-        
-        messages.push(...conversationHistory);
-        
-        const requestBody = {
-            model: aiSettings.model,
-            messages: messages,
-            temperature: aiSettings.temperature,
-            max_tokens: aiSettings.maxTokens,
-            top_p: aiSettings.topP
-        };
-        
-        const response = await fetch(API_ENDPOINTS.openrouter, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${API_KEYS.openrouter}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': window.location.href,
-                'X-Title': 'Venice AI Chat'
-            },
-            body: JSON.stringify(requestBody)
-        });
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`OpenRouter API failed: ${response.status} - ${errorText}`);
-        }
-        
-        const data = await response.json();
-        
-        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            throw new Error('Invalid OpenRouter response format');
-        }
-        
-        return data.choices[0].message.content;
-    } catch (error) {
-        console.error('OpenRouter Error:', error);
-        throw error;
-    }
-}
-
-async function sendToOllama(message) {
-    try {
-        const messages = [];
-        
-        if (aiSettings.systemPrompt && aiSettings.systemPrompt.trim()) {
-            messages.push({
-                role: 'system',
-                content: aiSettings.systemPrompt
-            });
-        }
-        
-        messages.push(...conversationHistory);
-        
-        const requestBody = {
-            model: aiSettings.model,
-            messages: messages,
-            temperature: aiSettings.temperature,
-            max_tokens: aiSettings.maxTokens,
-            top_p: aiSettings.topP,
-            stream: false
-        };
-        
-        const response = await fetch(API_ENDPOINTS.ollama, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer anything'  // Some endpoints need a token placeholder
-            },
-            body: JSON.stringify(requestBody)
-        });
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Ollama API failed: ${response.status} - ${errorText}`);
-        }
-        
-        const data = await response.json();
-        
-        // Handle OpenAI-compatible response format
-        if (data.choices && data.choices[0] && data.choices[0].message) {
-            return data.choices[0].message.content;
-        }
-        
-        // Handle Ollama native format
-        if (data.message && data.message.content) {
-            return data.message.content;
-        }
-        
-        throw new Error('Invalid Ollama response format');
-    } catch (error) {
-        console.error('Ollama Error:', error);
-        throw error;
-    }
-}
-
-// Model options per provider
-const MODEL_OPTIONS = {
-    gemini: [
-        { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview)' },
-        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-        { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Preview)' }
-    ],
-    openrouter: [
-        { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
-        { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
-        { value: 'google/gemini-pro-1.5', label: 'Gemini Pro 1.5' },
-        { value: 'mistralai/mistral-large', label: 'Mistral Large' }
-    ],
-    ollama: [
-        { value: 'llama-3.1-70b', label: 'Llama 3.1 70B' },
-        { value: 'llama-3.1-8b', label: 'Llama 3.1 8B' },
-        { value: 'gemma-2-9b', label: 'Gemma 2 9B' },
-        { value: 'mistral-7b', label: 'Mistral 7B' },
-        { value: 'qwen-2-7b', label: 'Qwen 2 7B' }
-    ]
-};
+// Popular HuggingFace models (free tier)
+const HF_MODELS = [
+    'mistralai/Mistral-7B-Instruct-v0.2',
+    'mistralai/Mixtral-8x7B-Instruct-v0.1',
+    'meta-llama/Llama-2-7b-chat-hf',
+    'meta-llama/Llama-2-13b-chat-hf',
+    'google/gemma-7b-it',
+    'tiiuae/falcon-7b-instruct',
+    'HuggingFaceH4/zephyr-7b-beta'
+];
 
 // Settings Functions
 function initializeSettings() {
@@ -584,11 +433,9 @@ function initializeSettings() {
         }
     });
     
-    // Provider change handler
-    document.getElementById('providerSelect').addEventListener('change', (e) => {
-        const provider = e.target.value;
-        updateModelOptions(provider);
-        updateProviderSpecificSettings(provider);
+    // Model selection handler
+    document.getElementById('modelSelect').addEventListener('change', (e) => {
+        aiSettings.model = e.target.value;
     });
     
     // Update slider values in real-time
@@ -605,37 +452,10 @@ function initializeSettings() {
     });
 }
 
-function updateModelOptions(provider) {
-    const modelSelect = document.getElementById('modelSelect');
-    modelSelect.innerHTML = '';
-    
-    const options = MODEL_OPTIONS[provider] || [];
-    options.forEach(opt => {
-        const option = document.createElement('option');
-        option.value = opt.value;
-        option.textContent = opt.label;
-        modelSelect.appendChild(option);
-    });
-    
-    // Set first option as default if current model not in list
-    if (options.length > 0 && !options.find(o => o.value === aiSettings.model)) {
-        modelSelect.value = options[0].value;
-    }
-}
-
-function updateProviderSpecificSettings(provider) {
-    const thinkingLevelGroup = document.getElementById('thinkingLevelGroup');
-    
-    // Show thinking level only for Gemini
-    if (provider === 'gemini') {
-        thinkingLevelGroup.style.display = 'block';
-    } else {
-        thinkingLevelGroup.style.display = 'none';
-    }
-}
+// No longer needed - vLLM uses fixed model
 
 function updateSettingsUI() {
-    document.getElementById('providerSelect').value = aiSettings.provider;
+    document.getElementById('modelSelect').value = aiSettings.model;
     document.getElementById('systemPrompt').value = aiSettings.systemPrompt;
     document.getElementById('temperature').value = aiSettings.temperature;
     document.getElementById('tempValue').textContent = aiSettings.temperature;
@@ -643,32 +463,14 @@ function updateSettingsUI() {
     document.getElementById('tokensValue').textContent = aiSettings.maxTokens;
     document.getElementById('topP').value = aiSettings.topP;
     document.getElementById('topPValue').textContent = aiSettings.topP;
-    
-    // Update model options and provider-specific settings
-    updateModelOptions(aiSettings.provider);
-    updateProviderSpecificSettings(aiSettings.provider);
-    
-    // Set current model
-    document.getElementById('modelSelect').value = aiSettings.model;
-    
-    // Set thinking level if Gemini
-    if (aiSettings.thinkingLevel) {
-        document.getElementById('thinkingLevel').value = aiSettings.thinkingLevel;
-    }
 }
 
 function saveSettingsFromUI() {
-    aiSettings.provider = document.getElementById('providerSelect').value;
     aiSettings.model = document.getElementById('modelSelect').value;
     aiSettings.systemPrompt = document.getElementById('systemPrompt').value;
     aiSettings.temperature = parseFloat(document.getElementById('temperature').value);
     aiSettings.maxTokens = parseInt(document.getElementById('maxTokens').value);
     aiSettings.topP = parseFloat(document.getElementById('topP').value);
-    
-    // Save thinking level if Gemini
-    if (aiSettings.provider === 'gemini') {
-        aiSettings.thinkingLevel = document.getElementById('thinkingLevel').value;
-    }
     
     // Save to localStorage
     localStorage.setItem('aiSettings', JSON.stringify(aiSettings));
