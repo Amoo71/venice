@@ -28,7 +28,7 @@ final class ContentBlockerService {
         userContentController.removeAllContentRuleLists()
         guard enabled else { return }
 
-        let store = WKContentRuleListStore.default()
+        guard let store = WKContentRuleListStore.default() else { return }
         store.lookUpContentRuleList(forIdentifier: listIdentifier) { [weak self] list, _ in
             if let list {
                 userContentController.add(list)
