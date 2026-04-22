@@ -532,20 +532,20 @@ final class BrowserViewModel: ObservableObject {
 
                 Persistence.clearAll()
 
-                settings = BrowserSettings()
-                proxies = []
-                activeProxyID = nil
-                tabs = [BrowserTab(urlString: settings.newTabStartPage)]
-                selectedTabID = tabs.first?.id
-                currentURL = URL(string: settings.newTabStartPage)
-                addressInput = settings.newTabStartPage
-                pageTitle = "Liquid Browser"
-                isFeatureMenuOpen = false
-                isBottomChromeHidden = false
-                clearDevToolsData()
+                self.settings = BrowserSettings()
+                self.proxies = []
+                self.activeProxyID = nil
+                self.tabs = [BrowserTab(urlString: self.settings.newTabStartPage)]
+                self.selectedTabID = self.tabs.first?.id
+                self.currentURL = URL(string: self.settings.newTabStartPage)
+                self.addressInput = self.settings.newTabStartPage
+                self.pageTitle = "Liquid Browser"
+                self.isFeatureMenuOpen = false
+                self.isBottomChromeHidden = false
+                self.clearDevToolsData()
 
-                pendingLoadURL = currentURL
-                webViewIdentity = UUID()
+                self.pendingLoadURL = self.currentURL
+                self.webViewIdentity = UUID()
             }
         }
     }
